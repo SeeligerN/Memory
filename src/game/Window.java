@@ -2,18 +2,15 @@ package game;
 
 import java.awt.Dimension;
 import java.awt.Graphics;
-import java.awt.Image;
-import java.awt.Toolkit;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
-import java.io.File;
 import java.io.IOException;
-import java.net.URL;
 import java.util.Random;
 
 import javax.imageio.ImageIO;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 
 public class Window {
 
@@ -31,6 +28,10 @@ public class Window {
 	private static JFrame frame;
 	private static DrawLabel label;
 
+	private static int turnedPairs = 0;
+	private static int cardsTurnedUnnecessarily = 0;
+	private static long timeStarted = 0;
+
 	public static void main(String[] args) {
 		loadTextures();
 		generateField();
@@ -46,7 +47,7 @@ public class Window {
 		frame.add(label);
 
 		resetSize();
-		frame.setVisible(true);
+		timeStarted = System.currentTimeMillis();
 	}
 
 	public static void loadTextures() {
@@ -62,7 +63,8 @@ public class Window {
 				int card = (color << 4) + type;
 
 				try {
-					textures[card] = ImageIO.read(Window.class.getResourceAsStream("/images/" + generateFilename(card) + ".png"));
+					textures[card] = ImageIO
+							.read(Window.class.getResourceAsStream("/images/" + generateFilename(card) + ".png"));
 				} catch (IOException e) {
 					e.printStackTrace();
 				}
@@ -71,18 +73,24 @@ public class Window {
 	}
 
 	public static void resetSize() {
-		label.setPreferredSize(new Dimension(width * 150, height * 225));
+		int preferredWidth = width * 150;
+		int preferredHeight = height * 225;
+		preferredWidth = preferredWidth > 1500 ? 1500 : preferredWidth;
+		preferredHeight = preferredHeight > 1000 ? 1000 : preferredHeight;
+		label.setPreferredSize(new Dimension(preferredWidth, preferredHeight));
 		frame.pack();
 		frame.setLocationRelativeTo(null);
+		frame.setVisible(true);
 	}
-	
+
 	public static void generateField() {
 		cards = new int[width][height];
 
 		Random r = new Random();
 		for (int x = 0; x < cards.length; x++) {
 			for (int y = 0; y < cards[x].length; y++) {
-				if (cards[x][y] != 0) continue;
+				if (cards[x][y] != 0)
+					continue;
 
 				int card = (r.nextInt(4) << 4) + r.nextInt(13) + 1;
 				while (cardsContain(card)) {
@@ -101,7 +109,8 @@ public class Window {
 						x2 = 0;
 						y2++;
 
-						if (y2 == height) y2 = 0;
+						if (y2 == height)
+							y2 = 0;
 					}
 				}
 				cards[x2][y2] = card;
@@ -112,7 +121,8 @@ public class Window {
 	private static boolean cardsContain(int card) {
 		for (int x = 0; x < cards.length; x++) {
 			for (int y = 0; y < cards[x].length; y++) {
-				if (cards[x][y] == card) return true;
+				if ((cards[x][y] & 0b111111) == (card & 0b111111))
+					return true;
 			}
 		}
 		return false;
@@ -121,7 +131,8 @@ public class Window {
 	public static boolean cardsCleared() {
 		for (int x = 0; x < cards.length; x++) {
 			for (int y = 0; y < cards[x].length; y++) {
-				if (cards[x][y] != 0) return false;
+				if ((cards[x][y] & 0b11111) != 0)
+					return false;
 			}
 		}
 		return true;
@@ -131,12 +142,18 @@ public class Window {
 		String filename = "";
 
 		int type = card & 0b001111;
-		if (type < 1 | type > 13) return filename;
-		if (type == 1) filename += "A";
-		if (type == 11) filename += "J";
-		if (type == 12) filename += "Q";
-		if (type == 13) filename += "K";
-		if (type > 1 && type < 11) filename += type;
+		if (type < 1 | type > 13)
+			return filename;
+		if (type == 1)
+			filename += "A";
+		if (type == 11)
+			filename += "J";
+		if (type == 12)
+			filename += "Q";
+		if (type == 13)
+			filename += "K";
+		if (type > 1 && type < 11)
+			filename += type;
 
 		int color = card & 0b110000;
 		color >>= 4;
@@ -150,34 +167,72 @@ public class Window {
 		return filename;
 	}
 
+	public static String formatTime(long time) {
+		int millis = (int) (time % 1000);
+		time /= 1000;
+		int seconds = (int) (time % 60);
+		time /= 60;
+		int minutes = (int) (time % 60);
+		time /= 60;
+		int hours = (int) (time % 60);
+
+		String timeString = String.format("%02d:%02d.%03ds", minutes, seconds, millis);
+		if (hours != 0)
+			timeString = String.format("%02d:%s", hours, timeString);
+
+		return timeString;
+	}
+
 	private static class DrawLabel extends JLabel {
 
-		/**
-		 * 
-		 */
 		private static final long serialVersionUID = 1L;
 
 		@Override
 		public void paint(Graphics g) {
 			super.paint(g);
-
-			int cardWidth = this.getWidth() / cards.length;
-			int cardHeight = this.getHeight() / cards[0].length;
+			
+			int spaceWidth = this.getWidth() / cards.length;
+			int spaceHeight = this.getHeight() / cards[0].length;
 
 			for (int x = 0; x < cards.length; x++) {
 				for (int y = 0; y < cards[x].length; y++) {
-					if (textures[cards[x][y]] != null) if (cards[x][y] != 0)
-						g.drawImage(backTexture, x * cardWidth, y * cardHeight, cardWidth, cardHeight, null);
+					if (textures[cards[x][y] & 0b11111] != null)
+						if ((cards[x][y] & 0b111111) != 0) {
+							paintCard(x * spaceWidth, y * spaceHeight, spaceWidth, spaceHeight, g, backTexture);
+						}
 				}
 			}
 
-			if (selected1[0] >= 0 && selected1[1] >= 0) if (textures[cards[selected1[0]][selected1[1]]] != null)
-				g.drawImage(textures[cards[selected1[0]][selected1[1]]], selected1[0] * cardWidth,
-						selected1[1] * cardHeight, cardWidth, cardHeight, null);
-			if (selected2[0] >= 0 && selected2[1] >= 0) if (textures[cards[selected2[0]][selected2[1]]] != null) {
-				g.drawImage(textures[cards[selected2[0]][selected2[1]]], selected2[0] * cardWidth,
-						selected2[1] * cardHeight, cardWidth, cardHeight, null);
-			}
+			if (selected1[0] >= 0 && selected1[1] >= 0)
+				if (textures[cards[selected1[0]][selected1[1]] & 0b111111] != null)
+					paintCard(selected1[0] * spaceWidth, selected1[1] * spaceHeight, spaceWidth, spaceHeight, g,
+							textures[cards[selected1[0]][selected1[1]] & 0b111111]);
+			if (selected2[0] >= 0 && selected2[1] >= 0)
+				if (textures[cards[selected2[0]][selected2[1]] & 0b111111] != null)
+					paintCard(selected2[0] * spaceWidth, selected2[1] * spaceHeight, spaceWidth, spaceHeight, g,
+							textures[cards[selected2[0]][selected2[1]] & 0b111111]);
+		}
+
+		private void paintCard(int x, int y, int spaceWidth, int spaceHeight, Graphics g, BufferedImage texture) {
+			int margin = 5;
+			
+			x += margin;
+			y += margin;
+			spaceWidth -= 2 * margin;
+			spaceHeight -= 2 * margin;
+			
+			int cardWidth = spaceWidth;
+			int cardHeight = spaceHeight;
+
+			if ((float) cardWidth / cardHeight > (float) texture.getWidth() / texture.getHeight())
+				cardWidth = (int) (cardHeight * ((float) texture.getWidth() / texture.getHeight()));
+			else
+				cardHeight = (int) (cardWidth * ((float) texture.getHeight() / texture.getWidth()));
+
+			x = (x + spaceWidth / 2 - cardWidth / 2);
+			y = (y + spaceHeight / 2 - cardHeight / 2);
+
+			g.drawImage(texture, x, y, cardWidth, cardHeight, null);
 		}
 	}
 
@@ -198,31 +253,70 @@ public class Window {
 
 			if (selected1[0] >= 0 && selected1[1] >= 0) {
 				if (selected2[0] >= 0 && selected2[1] >= 0) {
-					if (cards[selected1[0]][selected1[1]] == cards[selected2[0]][selected2[1]]) {
+
+					cards[selected1[0]][selected1[1]] += 1 << 6;
+					cards[selected2[0]][selected2[1]] += 1 << 6;
+					turnedPairs++;
+
+					if ((cards[selected1[0]][selected1[1]] & 0b111111) == (cards[selected2[0]][selected2[1]]
+							& 0b111111)) {
+						int tally1 = cards[selected1[0]][selected1[1]] >> 6;
+						int tally2 = cards[selected1[0]][selected1[1]] >> 6;
+
+						tally1 = tally1 > 0 ? tally1 - 1 : tally1;
+						tally1 = tally1 > 0 ? tally1 - 1 : tally1;
+						cardsTurnedUnnecessarily += tally1;
+						tally2 = tally2 > 0 ? tally2 - 1 : tally2;
+						tally2 = tally2 > 0 ? tally2 - 1 : tally2;
+						cardsTurnedUnnecessarily += tally2;
+
 						cards[selected1[0]][selected1[1]] = cards[selected2[0]][selected2[1]] = 0;
 
 						if (cardsCleared()) {
 							do {
-								if ((float) width / height < preferedAspectRatio) {
+								if ((float) (width * backTexture.getWidth())
+										/ (height * backTexture.getHeight()) < preferedAspectRatio) {
 									width++;
 								} else {
 									height++;
 								}
 							} while ((width * height) % 2 != 0);
-							generateField();
-							resetSize();
+
+							if (width * height > 52 * 2) {
+								// win condition
+								long time = System.currentTimeMillis() - timeStarted;
+								String message = "Herzlichen Glückwunsch! Du hast so viel Zeit verschwendet, dass es nicht mehr genug \n"
+										+ "Karten im Deck gibt um weiter zu spielen. Das ist ein wahres Testament deiner Abneigung gegen produktives Arbeiten. \n"
+										+ "Hier ein paar interessante Statistiken zum Angeben: \n";
+								message += "Kartenpaare gedreht: " + turnedPairs + "\n";
+								message += "Unnötige Drehungen: " + cardsTurnedUnnecessarily + "\n";
+								message += "Zeit verschwendet: " + formatTime(time);
+
+								JOptionPane.showMessageDialog(frame, message, "Du hast gewonnen?",
+										JOptionPane.INFORMATION_MESSAGE);
+
+								frame.dispose();
+							} else {
+								generateField();
+								if ((frame.getExtendedState() & JFrame.MAXIMIZED_BOTH) != JFrame.MAXIMIZED_BOTH)
+									resetSize();
+							}
+
 						}
 					}
 
 					selected1 = new int[] { -1, -1 };
 					selected2 = new int[] { -1, -1 };
 				} else {
-					if (x == selected1[0] && y == selected1[1]) return;
+					if (x == selected1[0] && y == selected1[1])
+						return;
 
-					if (cards[x][y] != 0) selected2 = new int[] { x, y };
+					if ((cards[x][y] & 0b111111) != 0)
+						selected2 = new int[] { x, y };
 				}
 
-			} else if (cards[x][y] != 0) selected1 = new int[] { x, y };
+			} else if ((cards[x][y] & 0b111111) != 0)
+				selected1 = new int[] { x, y };
 
 			frame.repaint();
 		}
@@ -241,6 +335,5 @@ public class Window {
 		public void mouseExited(MouseEvent e) {
 
 		}
-
 	}
 }
